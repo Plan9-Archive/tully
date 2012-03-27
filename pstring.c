@@ -42,3 +42,37 @@ pstringtolower(pstring *s)
 	for (i = 0; i < s->length; i++)
 		s->data[i] = tolower(s->data[i]);;
 }
+
+int
+pstringcmp(pstring *s1, pstring *s2)
+{
+	int i, len;
+	uchar c1, c2;
+	uchar *d1, *d2;
+
+	d1 = s1->data;
+	d2 = s2->data;
+
+	len = s1->length < s2->length ? s1->length : s2->length;
+
+	for(i = 0; i < len; i++) {
+		c1 = *(d1++);
+		c2 = *(d2++);
+		print("comparing %c and %c\n", c1, c2);
+		if(c1 != c2) {
+			if(c1 > c2)
+				return 1;
+			return -1;
+		}
+	}
+
+	return (s1->length == s2->length ? 0 : 1);
+}
+
+void
+freepstring(pstring *s)
+{
+	if (s != nil)
+		free(s->data);
+		free(s);
+}

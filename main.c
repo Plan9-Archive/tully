@@ -7,6 +7,22 @@
 
 htable *ht;
 
+void 
+errorreply(int fd, char* s)
+{
+	if (s) {
+		fprint(fd, "-%s\r\n", s);
+	}
+}
+
+void
+statusreply(int fd, char* s)
+{
+	if (s) {
+		fprint(fd, "+%s\r\n", s);
+	}
+}
+
 void
 bulkreply(int fd, pstring *s)
 {
@@ -17,6 +33,11 @@ bulkreply(int fd, pstring *s)
 	}
 }
 
+void
+nilreply(int fd)
+{
+	fprint(fd, "$-1\r\n");
+}
 
 int
 gethandler(int fd, pstring** args)
@@ -25,6 +46,10 @@ gethandler(int fd, pstring** args)
 	pstring *r;
 
 	r = get(ht, args[0]);
+	if (r == nil) {
+		nilreply(fd);
+		return 0;
+	}
 	s = pstring2cstring(r);
 	print("gethandler read: %s\n", s);
 	bulkreply(fd, r);
@@ -36,6 +61,7 @@ int
 sethandler(int fd, pstring** args)
 {
 	set(ht, args[0], args[1]);
+	statusreply(fd, "OK");
 	return 0;
 }
 
@@ -125,9 +151,8 @@ handler(int fd)
 		n = read(fd, buf, 1);
 		if (n != 1 || buf[0] != '*')
 			goto error;
-		print("got a *, time to read the number of arguments\n");
+
 		nargs = readnum(fd, buf, 128);
-		print("There will be %d arguments\n", nargs);
 	
 		args = (pstring**)mallocz(sizeof(pstring*)*nargs, 1);
 	
@@ -163,7 +188,7 @@ handler(int fd)
 	}
 error:
 	print("error reading command\n");
-	write(fd, "-ERROR\r\n", 8);
+	errorreply(fd, "ERROR");
 	close(fd);
 	free(args);
 	exits(0);
@@ -203,20 +228,4 @@ main()
 			break;
 		}
 	}
-}
-
-void
-oldmain()
-{
-	htable *ht;
-	pstring *k, *v, *res;
-
-	ht = inittable(3001);
-
-	k = cstring2pstring("1");
-	v = cstring2pstring("hello");
-	set(ht, k, v);
-
-	res = get(ht, k);
-	print("read value = %s\n", res->data);
 }
