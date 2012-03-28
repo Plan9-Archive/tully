@@ -11,7 +11,7 @@ pstring2cstring(pstring *s)
 {
 	char *res;
 
-	res = (char*)mallocz(sizeof(char)*s->length+1, 1);
+	res = mallocz(sizeof(char)*s->length+1, 1);
 
 	memcpy(res, s->data, s->length);
 	res[s->length] = 0;
@@ -28,7 +28,7 @@ cstring2pstring(char *s)
 {
 	pstring *p;
 
-	p = (pstring*)mallocz(sizeof(pstring*), 1);
+	p = mallocz(sizeof(pstring), 1);
 
 	p->length = strlen(s);
 	p->data = (uchar*)strdup(s);
@@ -58,7 +58,6 @@ pstringcmp(pstring *s1, pstring *s2)
 	for(i = 0; i < len; i++) {
 		c1 = *(d1++);
 		c2 = *(d2++);
-		print("comparing %c and %c\n", c1, c2);
 		if(c1 != c2) {
 			if(c1 > c2)
 				return 1;
@@ -72,7 +71,23 @@ pstringcmp(pstring *s1, pstring *s2)
 void
 freepstring(pstring *s)
 {
-	if (s != nil)
+	if(s)
 		free(s->data);
-		free(s);
+	free(s);
+}
+
+/*
+ Create a copy of the given pstring.
+*/
+pstring*
+clonepstring(pstring *s)
+{
+	pstring *r;
+
+	r = mallocz(sizeof(pstring), 1);
+
+	r->length = s->length;
+	r->data = mallocz(sizeof(uchar)*(r->length), 1);
+	memcpy(r->data, s->data, r->length);
+	return r;
 }

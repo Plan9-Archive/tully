@@ -3,3 +3,4 @@ pstring* cstring2pstring(char *s);
 void pstringtolower(pstring *s);
 int pstringcmp(pstring *s1, pstring *s2);
 void freepstring(pstring *s);
+pstring* clonepstring(pstring *s);

@@ -17,13 +17,21 @@ struct hentry {
 
 // A hash table
 typedef struct htable {
+	RWLock l;
 	uint	size;
 	hentry **tab;
 } htable;
 
-// A command from a client
+// The current client connection
+typedef struct Client {
+	pstring **args; // the current command with arguments
+	int nargs; // the number of args for the current command
+	int fd;	// the network connection
+} Client;
+
+// A command
 typedef struct Command {
 	char*	name;
-	int		(*proc)(int, pstring**);
+	int		(*proc)(Client*);
 	int		nargs; // number of arguments (size of the pstring array)
 } Command;

@@ -20,9 +20,9 @@ inittable(uint size)
 {
 	htable *ht;
 
-	ht = (htable*)mallocz(sizeof(htable*), 1);
+	ht = mallocz(sizeof(htable), 1);
 
-	ht->tab = (hentry**)mallocz(size*sizeof(hentry*), 1);
+	ht->tab = mallocz(size*sizeof(hentry*), 1);
 	ht->size = size;
 
 	return ht;
@@ -36,49 +36,57 @@ set(htable *ht, pstring *key, pstring *value)
 	int cmp;
 	hentry *entry;
 	hentry *p;
+	pstring *k, *v;
+	uint ret = 0;
+	pstring *old;
 
-	entry = (hentry*)mallocz(sizeof(hentry*), 1);
+	// by doing this, the caller can safely free the arguments that were passed to us
+	k = clonepstring(key);
+	v = clonepstring(value);
 
-	// TODO: put in real linked-list stuff later
+	entry = mallocz(sizeof(hentry), 1);
+
 	h = hash(key->data, key->length);
+
+	// Lock the hash table for writing
+	wlock(&ht->l);
 	if (ht->tab[h%ht->size] == nil) {
-		print("first element at this bucket\n");
-		entry->key = key;
-		entry->value = value;
+		entry->key = k;
+		entry->value = v;
 		entry->next = entry->prev = nil;
 		ht->tab[h%ht->size] = entry;
-		return h;
+		ret = h;
 	} else  {
 		// traverse the list
 		p = ht->tab[h%ht->size];
 		for (;;) {
-			cmp = pstringcmp(key, p->key);
-			print("compare returned %d\n", cmp);
+			cmp = pstringcmp(k, p->key);
 			if (!cmp) {
 				// the key already exists, replace it
-				print("replacing existing value\n");
-				freepstring(p->key);
-				freepstring(p->value);
-				p->key = key;
-				p->value = value;
+				old = p->value;
+				p->value = v;
+				freepstring(old);
 				free(entry);
-				return h;
+				freepstring(k);
+				ret = h;
+				break;
 			}
 			if (p->next) {
-				print("stepping to the next p\n");
 				p = p->next;
 			} else {
-				print("linking value to the end of the list\n");
-				entry->key = key;
-				entry->value = value;
+				entry->key = k;
+				entry->value = v;
 				entry->next = entry->prev = nil;
 				p->next = entry;
 				entry->prev = p;
-				return h;
+				ret = h;
+				break;
 			}
 		}
 	}
-	return -1;
+	// unlock the table
+	wunlock(&ht->l);
+	return ret;
 }
 
 pstring*
@@ -87,17 +95,21 @@ get(htable *ht, pstring *key)
 	uint h;
 	hentry *p;
 	int cmp;
+	pstring *ret = nil;
 
 	h = hash(key->data, key->length);
-	if (ht->tab[h%ht->size] == nil) return nil;
 
+	// Lock for reading
+	rlock(&ht->l);
 	p = ht->tab[h%ht->size];
 	for (; p != nil;) {
 		cmp = pstringcmp(key, p->key);
 		if (!cmp) {
-			return p->value;
+			ret = clonepstring(p->value); // return a *copy* to avoid nasty frees
 		}
 		p = p->next;
 	}
-	return nil;
+	// unlock
+	runlock(&ht->l);
+	return ret;
 }

@@ -8,67 +8,102 @@
 htable *ht;
 
 void 
-errorreply(int fd, char* s)
+errorreply(Client *c, char* s)
 {
 	if (s) {
-		fprint(fd, "-%s\r\n", s);
+		fprint(c->fd, "-%s\r\n", s);
 	}
 }
 
 void
-statusreply(int fd, char* s)
+statusreply(Client *c, char* s)
 {
 	if (s) {
-		fprint(fd, "+%s\r\n", s);
+		fprint(c->fd, "+%s\r\n", s);
 	}
 }
 
 void
-bulkreply(int fd, pstring *s)
+bulkreply(Client *c, pstring *s)
 {
 	if (s) {
-		fprint(fd, "$%d\r\n", s->length);
-		write(fd, s->data, s->length);
-		fprint(fd, "\r\n");
+		fprint(c->fd, "$%d\r\n", s->length);
+		write(c->fd, s->data, s->length);
+		fprint(c->fd, "\r\n");
 	}
 }
 
 void
-nilreply(int fd)
+nilreply(Client *c)
 {
-	fprint(fd, "$-1\r\n");
+	fprint(c->fd, "$-1\r\n");
 }
 
 int
-gethandler(int fd, pstring** args)
+gethandler(Client *c)
 {
-	char *s;
 	pstring *r;
 
-	r = get(ht, args[0]);
+//	print("get: fd %d\n", fd);
+	r = get(ht, c->args[1]);
 	if (r == nil) {
-		nilreply(fd);
+		nilreply(c);
 		return 0;
 	}
-	s = pstring2cstring(r);
-	print("gethandler read: %s\n", s);
-	bulkreply(fd, r);
-	free(s);
+	bulkreply(c, r);
+	freepstring(r);
 	return 0;
 }
 
 int
-sethandler(int fd, pstring** args)
+sethandler(Client *c)
 {
-	set(ht, args[0], args[1]);
-	statusreply(fd, "OK");
+//	print("set: fd %d\n", fd);
+	set(ht, c->args[1], c->args[2]);
+	statusreply(c, "OK");
 	return 0;
+}
+
+int
+quithandler(Client *c)
+{
+	close(c->fd);
+	exits(0);
+	return 0; // this is stupid, but it keeps the compiler quiet
 }
 
 Command commands[] = {
 	{"get", gethandler, 1},
 	{"set", sethandler, 2},
+	{"quit", quithandler, 0},
 };
+
+/*
+ Clean up the client, deallocating stuff if needed.
+ If done is set, will close the fd and exit the current thread
+*/
+void
+cleanclient(Client *c, int done)
+{
+	int i;
+
+	if (c->args != nil)
+		for (i = 0; i < c->nargs; i++) {
+			freepstring(c->args[i]);
+//			if (c->args[i] != nil) {
+//				if (c->args[i]->data != nil)
+//					free(c->args[i]->data);
+//				free(c->args[i]);
+//			}
+		}
+	free(c->args); // according to malloc(2), this is safe even if args is nil
+	c->args = nil;
+	if (done) {
+		//print("quitting\n");
+		close(c->fd);
+		exits(0);
+	}
+}
 
 int 
 readnum(int sockd, void *vptr, int maxlen) 
@@ -79,19 +114,15 @@ readnum(int sockd, void *vptr, int maxlen)
 	buffer = vptr;
 
 	for ( n = 1; n < maxlen; n++ ) {
-		if ( (rc = read(sockd, &c, 1)) == 1 ) {
+		if ( (rc = readn(sockd, &c, 1)) == 1 ) {
 			*buffer++ = c;
 			if ( c == '\n' && *(buffer-2) == '\r') {
 				*(buffer-1) = 0;
 				break;
 			}
-		} else if ( rc == 0 ) {
-			if ( n == 1 )
-				return 0;
-			else
-				break;
-		} else {
-			exits("Error in Readline()");
+		} else if ( rc <= 0 ) {
+			close(sockd);
+			exits(0);
 		}
 	}
 
@@ -111,21 +142,21 @@ readpstring(int fd, int len)
 	char c;
 	pstring *result;
 
-	result = (pstring*)mallocz(sizeof(pstring), 1);
+	result = mallocz(sizeof(pstring), 1);
 
 	result->length = len;
-	result->data = (uchar*)mallocz(sizeof(uchar)*len, 1);
+	result->data = mallocz(sizeof(uchar)*len, 1);
 
-	n = read(fd, result->data, len);
+	n = readn(fd, result->data, len);
 
 	if (n != len) 
 		goto readerr;
 
-	n = read(fd, &c, 1);
+	n = readn(fd, &c, 1);
 	if (n != 1 || c != '\r')
 		goto readerr;
 
-	n = read(fd, &c, 1);
+	n = readn(fd, &c, 1);
 	if (n != 1 || c != '\n')
 		goto readerr;
 
@@ -134,64 +165,99 @@ readpstring(int fd, int len)
 readerr:
 	free(result->data);
 	free(result);
+	if (n <= 0) {
+		close(fd);
+		exits(0);
+	}
 	return nil;
 }
 
 void
 handler(int fd)
 {
-	int n, nargs, arglen, i;
-	pstring **args;
+	Client c;
+	int n, arglen, i;
 	pstring *tmp;
 	char buf[128];
 	int foundcommand = 0;
+	char *s;
+
+	//print("new client fd = %d\n", fd);
+
+	c.fd = fd;
+	//c.args = mallocz(sizeof(pstring*)*3, 1); // allocate 3 slots, this should actually be big enough for anything for now
 
 	for (;;) {
 		/* All commands start with '*' followed by the # of arguments */
-		n = read(fd, buf, 1);
-		if (n != 1 || buf[0] != '*')
-			goto error;
+		n = readn(fd, buf, 1);
+		if (n != 1 || buf[0] != '*') {
+			if (n <= 0)
+				cleanclient(&c, 1);
+			errorreply(&c, "ERROR");
+			cleanclient(&c, 0);
+			continue;
+		}
 
-		nargs = readnum(fd, buf, 128);
-	
-		args = (pstring**)mallocz(sizeof(pstring*)*nargs, 1);
-	
-		for (i = 0; i < nargs; i++) {
-			n = read(fd, buf, 1);
+		c.nargs = readnum(fd, buf, 128);
+		if (c.nargs <= 0) {
+			errorreply(&c, "ERROR");
+			cleanclient(&c, 0);
+			continue;
+		}
+
+		c.args = mallocz(sizeof(pstring*)*c.nargs, 1);
+
+		// Read in the arguments
+		for (i = 0; i < c.nargs; i++) {
+			n = readn(fd, buf, 1);
 			if ((buf[0] != '$') || (n != 1)) {
-				goto error;
+				if (n <= 0) { cleanclient(&c, 1); }
+				errorreply(&c, "ERROR");
+				cleanclient(&c, 0);
+				break;
 			}
 	
 			arglen = readnum(fd, buf, 128);
+			if (arglen <= 0) {
+				errorreply(&c, "ERROR");
+				cleanclient(&c, 0);
+				break;
+			}
 	
 			tmp = readpstring(fd, arglen);
+			if (tmp == nil) {
+				errorreply(&c, "ERROR");
+				cleanclient(&c, 0);
+				break;
+			}
 	
-			if (tmp == nil)
-				goto error;
-	
-			args[i] = tmp;
+			c.args[i] = tmp;
 		}
-	
+
+		// Make sure we successfully finished the loop
+		// c.args will be nil if we had an error
+		if (!c.args)
+			continue;
+
 		// we do all the commands as lower case for simplicity
-		pstringtolower(args[0]);
-	
+		pstringtolower(c.args[0]);
+
 		for (i = 0; i < (sizeof(commands)/sizeof(commands[0])); i++) {
-			if (!memcmp(args[0]->data, commands[i].name, (args[0]->length < strlen(commands[i].name) ? args[0]->length : strlen(commands[i].name)))) {
-				print("the command was %s\n", commands[i].name);
+			if (!memcmp(c.args[0]->data, commands[i].name, (c.args[0]->length < strlen(commands[i].name) ? c.args[0]->length : strlen(commands[i].name))) && c.nargs - 1 == commands[i].nargs) {
 				foundcommand = 1;
-				(commands[i].proc)(fd, args+1);
+				(commands[i].proc)(&c);
 				break;
 			}
 		}
-		if (!foundcommand)
-			goto error;
+		if (!foundcommand) {
+			s = pstring2cstring(c.args[0]);
+			print("unknown command %s\n", s);
+			free(s);
+		}
+		cleanclient(&c, 0);
 	}
-error:
-	print("error reading command\n");
-	errorreply(fd, "ERROR");
-	close(fd);
-	free(args);
-	exits(0);
+	//close(fd);
+	//exits(0);
 }
 
 void
@@ -200,7 +266,7 @@ main()
 	int dfd, acfd, lcfd;
 	char adir[40], ldir[40];
 
-	ht = inittable(3001);
+	ht = inittable(1);
 
 	acfd = announce("tcp!*!3000", adir);
 	if (acfd < 0)
@@ -211,7 +277,7 @@ main()
 		if (lcfd < 0)
 			exits("listen failed");
 
-		switch (rfork(RFPROC|RFMEM|RFNOWAIT)) {
+		switch (rfork(RFPROC|RFFDG|RFMEM|RFNOWAIT)) {
 		case -1:
 			perror("fork failed");
 			close(lcfd);
