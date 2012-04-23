@@ -268,7 +268,7 @@ main()
 
 	ht = inittable(1);
 
-	acfd = announce("tcp!*!3000", adir);
+	acfd = announce("tcp!*!6379", adir);
 	if (acfd < 0)
 		exits("announce failed");
 
