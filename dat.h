@@ -3,7 +3,7 @@
 // A Pascal-style string
 typedef struct pstring {
 	uint	length;
-	uchar	*data;
+	unsigned char	*data;
 } pstring;
 
 // An entry in the hash table
@@ -35,3 +35,7 @@ typedef struct Command {
 	int		(*proc)(Client*);
 	int		nargs; // number of arguments (size of the pstring array)
 } Command;
+
+
+// Our hash table
+htable *ht;

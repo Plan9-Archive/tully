@@ -1,5 +1,10 @@
+#ifdef PLAN9
 #include <u.h>
 #include <libc.h>
+#else
+#include "linux.h"
+#endif
+
 #include "dat.h"
 
 /* 
@@ -31,7 +36,7 @@ cstring2pstring(char *s)
 	p = mallocz(sizeof(pstring), 1);
 
 	p->length = strlen(s);
-	p->data = (uchar*)strdup(s);
+	p->data = (unsigned char*)strdup(s);
 	return p;
 }
 
@@ -47,8 +52,8 @@ int
 pstringcmp(pstring *s1, pstring *s2)
 {
 	int i, len;
-	uchar c1, c2;
-	uchar *d1, *d2;
+	unsigned char c1, c2;
+	unsigned char *d1, *d2;
 
 	d1 = s1->data;
 	d2 = s2->data;
@@ -87,7 +92,7 @@ clonepstring(pstring *s)
 	r = mallocz(sizeof(pstring), 1);
 
 	r->length = s->length;
-	r->data = mallocz(sizeof(uchar)*(r->length), 1);
+	r->data = mallocz(sizeof(unsigned char)*(r->length), 1);
 	memcpy(r->data, s->data, r->length);
 	return r;
 }

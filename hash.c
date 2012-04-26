@@ -1,12 +1,17 @@
+#ifdef PLAN9
 #include <u.h>
 #include <libc.h>
+#else
+#include "linux.h"
+#endif
+
 #include "dat.h"
 #include "pstring.h"
 #include "hash.h"
 
 /* Bernstein's hash */
 uint 
-hash(uchar *buf, int len)
+hash(unsigned char *buf, int len)
 {
 	unsigned int hash = 5381;
 
