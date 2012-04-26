@@ -4,6 +4,7 @@
 #include "dat.h"
 #include "hash.h"
 #include "pstring.h"
+#include "protocol.h"
 
 void
 main()
