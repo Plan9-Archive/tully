@@ -4,12 +4,6 @@
 #include <ctype.h>
 #else
 #include <stdio.h>
-//#include <string.h>
-//#include <stdlib.h>
-//#include <sys/types.h>
-//#include <sys/stat.h>
-//#include <fcntl.h>
-//#include <unistd.h>
 #include "linux.h"
 #endif
 
@@ -122,16 +116,10 @@ cleanclient(Client *c, int done)
 	if (c->args != nil)
 		for (i = 0; i < c->nargs; i++) {
 			freepstring(c->args[i]);
-//			if (c->args[i] != nil) {
-//				if (c->args[i]->data != nil)
-//					free(c->args[i]->data);
-//				free(c->args[i]);
-//			}
 		}
 	free(c->args); // according to malloc(2), this is safe even if args is nil
 	c->args = nil;
 	if (done) {
-		//print("quitting\n");
 		close(c->fd);
 		exits(0);
 	}
@@ -217,7 +205,6 @@ handler(int fd)
 	//print("new client fd = %d\n", fd);
 
 	c.fd = fd;
-	//c.args = mallocz(sizeof(pstring*)*3, 1); // allocate 3 slots, this should actually be big enough for anything for now
 
 	for (;;) {
 		/* All commands start with '*' followed by the # of arguments */
@@ -275,6 +262,7 @@ handler(int fd)
 		pstringtolower(c.args[0]);
 
 		for (i = 0; i < (sizeof(commands)/sizeof(commands[0])); i++) {
+			// I apologize for this conditional
 			if (!memcmp(c.args[0]->data, commands[i].name, (c.args[0]->length < strlen(commands[i].name) ? c.args[0]->length : strlen(commands[i].name))) && c.nargs - 1 == commands[i].nargs) {
 				foundcommand = 1;
 				(commands[i].proc)(&c);
@@ -288,6 +276,4 @@ handler(int fd)
 		}
 		cleanclient(&c, 0);
 	}
-	//close(fd);
-	//exits(0);
 }
