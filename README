@@ -1,0 +1,5 @@
+This is a very simple, naively implemented key-value store for both Linux and Plan 9. The intended purpose is to have a benchmark which can run on both platforms and use essentially the same architecture. The server supports a very limited subset of the Redis protocol--specifically, it only supports the SET, GET, and QUIT commands. It can be stress-tested using the Redis benchmark tool.
+
+Almost all of the code is common. Linux and Plan 9 each have their own file containing a main() implementation. Both implementations listen on port 6379, then spawn off a handler process for each incoming connection. In Plan 9, this is implemented with a fork(RFMEM) call, which causes the parent and child to share memory space. In Linux, memory sharing is a bit harder; I ended up using pthreads, but it requires some additional fiddling.
+
+To compile for Plan 9, run "mk". For Linux, run "make". 
