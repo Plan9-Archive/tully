@@ -4,7 +4,7 @@ CFLAGS=-FTVw -DPLAN9
 TARG=tully
 OFILES=\
 	hash.$O\
-	main.$O\
+	plan9.$O\
 	protocol.$O\
 	pstring.$O\
 
