@@ -50,14 +50,28 @@ reaper(void *arg)
 }
 
 void
-main()
+main(int argc, char *argv[])
 {
 	int fd, i;
+	int tablesize = 2001;
 	int on = 1;
 	struct sockaddr_in servaddr;
 	pthread_t reaperthread;
 
-	ht = inittable(1024);
+	if (!(argc == 1 || argc == 2)) {
+		printf("usage: %s [table size]\n", argv[0]);
+		exit(0);
+	}
+
+	if (argc == 2) 
+		tablesize = atoi(argv[1]);
+
+	if (tablesize <= 0) {
+		printf("Invalid table size %d, quitting\n", tablesize);
+		exit(1);
+	}
+
+	ht = inittable(tablesize);
 
 	pthread_rwlock_init(&ht->l, NULL);
 	pthread_rwlock_init(&threadslock, NULL);
